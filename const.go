@@ -12,4 +12,7 @@ const (
 	j0hnSpriteFile  = "j0hn.png"
 	j0hnScale       = 3.0
 	starsProportion = 0.0005
+
+	// Captures
+	capturesDir = "captures"
 )

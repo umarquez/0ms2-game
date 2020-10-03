@@ -1,16 +1,13 @@
 package main
 
+import "C"
 import (
-	"fmt"
 	"github.com/hajimehoshi/ebiten"
 	_ "github.com/silbinarywolf/preferdiscretegpu"
 	log "github.com/sirupsen/logrus"
 	"image"
 	"image/color"
-	"image/gif"
 	"math/rand"
-	"os"
-	"path/filepath"
 	"time"
 )
 
@@ -29,10 +26,7 @@ func main() {
 	ebiten.SetWindowTitle(gameTitle)
 
 	defer func() {
-		fname := filepath.Join("capture", fmt.Sprintf("%v.gif", time.Now().Unix()))
-		fOut, _ := os.Create(fname)
-		_ = gif.EncodeAll(fOut, game.gif)
-		_ = fOut.Close()
+		GetCaptureInstance().WriteAndClose()
 	}()
 
 	if err := ebiten.RunGame(game); err != nil {

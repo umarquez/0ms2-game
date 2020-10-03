@@ -1,7 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"github.com/hajimehoshi/ebiten"
+	"github.com/hajimehoshi/ebiten/ebitenutil"
+	log "github.com/sirupsen/logrus"
 	"github.com/ungerik/go3d/float64/vec2"
 	"image"
 	"math"
@@ -42,6 +45,8 @@ type J0hn struct {
 	timeAcumulator int64
 	currentTileId  vec2.T
 
+	o2, fuel float64
+
 	flying bool
 }
 
@@ -54,6 +59,8 @@ func NewJ0hn() *J0hn {
 		acceleration:     new(vec2.T),
 		velocity:         new(vec2.T),
 		relativePosition: new(vec2.T),
+		fuel:             100,
+		o2:               100,
 	}
 }
 
@@ -127,6 +134,18 @@ func (j0hn *J0hn) Draw(screen *ebiten.Image) {
 	x2, y2 := x1+playerSize, y1+playerSize
 
 	screen.DrawImage(imgJ0hn.SubImage(image.Rect(x1, y1, x2, y2)).(*ebiten.Image), &op)
+	ebitenutil.DebugPrintAt(
+		screen,
+		fmt.Sprintf(
+			"Fuel: %0.2f\nO2: %0.2f\nVelocity:\n  x: %0.2f\n  y: %0.2f",
+			j0hn.fuel,
+			j0hn.o2,
+			j0hn.velocity[0],
+			j0hn.velocity[1],
+		),
+		0,
+		windowHeight/2,
+	)
 }
 
 func (j0hn *J0hn) Update(_ *ebiten.Image, delta int64) {
@@ -134,6 +153,13 @@ func (j0hn *J0hn) Update(_ *ebiten.Image, delta int64) {
 
 	if j0hn.timeAcumulator >= playerTick {
 		j0hn.timeAcumulator = 0
+
+		j0hn.o2 -= .1
+
+		if j0hn.o2 < 0 {
+			j0hn.o2 = 0
+			j0hn.velocity = &vec2.T{0, 0}
+		}
 
 		var direction = 0.0
 		if ebiten.IsKeyPressed(ebiten.KeyLeft) {
@@ -149,8 +175,15 @@ func (j0hn *J0hn) Update(_ *ebiten.Image, delta int64) {
 			j0hn.rotation = 0
 		}
 
-		if ebiten.IsKeyPressed(ebiten.KeySpace) {
+		if ebiten.IsKeyPressed(ebiten.KeySpace) && j0hn.fuel > 0 {
 			j0hn.Accelerate(&vec2.T{direction * 2, 2})
+
+			if j0hn.fuel < 0 {
+				j0hn.fuel = 0
+			} else if j0hn.fuel > 0 {
+				j0hn.fuel -= 2
+			}
+
 		} else if !j0hn.flying {
 			j0hn.StandUp()
 		} else {
@@ -178,4 +211,45 @@ func (j0hn *J0hn) Update(_ *ebiten.Image, delta int64) {
 			j0hn.relativePosition = j0hn.relativePosition.Add(j0hn.velocity)
 		}
 	}
+}
+
+func (j0hn *J0hn) AddO2(amount float64) {
+	total := j0hn.o2 + amount
+	if total > 100 {
+		total = 100
+	}
+
+	j0hn.o2 = total
+}
+
+func (j0hn *J0hn) AddFuel(amount float64) {
+	total := j0hn.fuel + amount
+	if total > 100 {
+		total = 100
+	}
+
+	j0hn.fuel = total
+}
+
+func (j0hn *J0hn) Collition(obj *vec2.Rect) bool {
+	position := copyVector(*j0hn.position)
+	position.Scale(j0hnScale)
+	max := copyVector(position)
+	max.Add(&vec2.T{playerSize, playerSize})
+	//max.Scale(2)
+
+	playerArea := vec2.Rect{
+		Min: position,
+		Max: max,
+	}
+
+	log.WithFields(map[string]interface{}{
+		"player": playerArea,
+		"obj":    obj,
+	}).Trace("")
+
+	return playerArea.ContainsPoint(&obj.Min) ||
+		playerArea.ContainsPoint(&obj.Max) ||
+		playerArea.ContainsPoint(&vec2.T{obj.Min[0], obj.Max[1]}) ||
+		playerArea.ContainsPoint(&vec2.T{obj.Max[0], obj.Min[1]})
 }

@@ -1,17 +1,17 @@
 package main
 
 import (
-	"fmt"
 	"github.com/hajimehoshi/ebiten"
 	"github.com/hajimehoshi/ebiten/ebitenutil"
 	log "github.com/sirupsen/logrus"
 	"github.com/ungerik/go3d/float64/vec2"
+	"image"
 	"math/rand"
 	"path/filepath"
 	"sort"
 )
 
-const planetScale = 3
+const planetScale = 2
 
 type Planet struct {
 	id              uint
@@ -37,23 +37,24 @@ func (planet *Planet) Draw(screen *ebiten.Image) {
 	}
 }
 
+const planetSize = 32
 const planetsUpdateInterval = 20
 const velocityScale = 2
-const newPlanetProbability = .2
+const newPlanetProbability = .4
 const maxPlayerInfluence = .1
 
 var planetsSprites []*ebiten.Image
 
 func init() {
-	for i := 1; i < 5; i++ {
-		planetFile := fmt.Sprintf("planet-%v.png", i)
-		img, _, err := ebitenutil.NewImageFromFile(filepath.Join(spritesPath, planetFile), ebiten.FilterNearest)
-		if err != nil {
-			log.WithField("sprite", planetFile).Error(err)
-			continue
-		}
+	planetFile := "planets.png"
+	img, _, err := ebitenutil.NewImageFromFile(filepath.Join(spritesPath, planetFile), ebiten.FilterNearest)
+	if err != nil {
+		log.WithField("sprite", planetFile).Error(err)
+	}
 
-		planetsSprites = append(planetsSprites, img)
+	for i := 0; i < img.Bounds().Max.X/planetSize; i++ {
+		sprite := img.SubImage(image.Rect(planetSize*i, 0, planetSize*(i+1), planetSize)).(*ebiten.Image)
+		planetsSprites = append(planetsSprites, sprite)
 	}
 }
 
