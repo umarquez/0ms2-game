@@ -26,8 +26,9 @@ type Game struct {
 
 func newGame(bg color.Color, windowSize image.Point) *Game {
 	game := &Game{
-		bgColor:  bg,
-		gameSize: windowSize,
+		bgColor:    bg,
+		gameSize:   windowSize,
+		lastUpdate: time.Now(),
 	}
 
 	playerPosition := vec2.T{
@@ -38,7 +39,7 @@ func newGame(bg color.Color, windowSize image.Point) *Game {
 	playerPosition.Scale(1 / j0hnScale)
 
 	player := NewJ0hn().SetPosition(playerPosition)
-	starfield := NewStarfield(player)
+	starfield := NewBackgroundSystem(player)
 	planets := NewPlanetSpawner(player)
 	powerups := NewPowerupSpawner(player)
 	game.entities = append(game.entities,
@@ -63,19 +64,17 @@ func (g *Game) Update(screen *ebiten.Image) error {
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	screen.Fill(g.bgColor)
+	_ = screen.Fill(g.bgColor)
 
 	for _, e := range g.entities {
 		e.Draw(screen)
 	}
 
 	if g.ShowFPS {
-		ebitenutil.DebugPrint(screen, fmt.Sprintf("TPS: %0.2f\nFPS: %0.2f", ebiten.CurrentTPS(), ebiten.CurrentFPS()))
+		_ = ebitenutil.DebugPrint(screen, fmt.Sprintf("TPS: %0.2f\nFPS: %0.2f", ebiten.CurrentTPS(), ebiten.CurrentFPS()))
 	}
-
-	GetCaptureInstance().Capture(screen, time.Since(g.lastDraw).Milliseconds())
 }
 
-func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+func (g *Game) Layout(int, int) (int, int) {
 	return windowWidth, windowHeight
 }

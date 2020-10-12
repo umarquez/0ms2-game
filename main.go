@@ -25,10 +25,6 @@ func main() {
 	ebiten.SetWindowSize(windowWidth, windowHeight)
 	ebiten.SetWindowTitle(gameTitle)
 
-	defer func() {
-		GetCaptureInstance().WriteAndClose()
-	}()
-
 	if err := ebiten.RunGame(game); err != nil {
 		log.Fatal(err)
 	}

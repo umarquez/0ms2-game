@@ -5,6 +5,7 @@ import (
 	"github.com/hajimehoshi/ebiten/ebitenutil"
 	log "github.com/sirupsen/logrus"
 	"github.com/ungerik/go3d/float64/vec2"
+	"image/color"
 	"math/rand"
 	"path/filepath"
 	"sort"
@@ -25,27 +26,48 @@ type Powerup struct {
 	op              *ebiten.DrawImageOptions
 	playerInfluence float64
 	puType          PowerupType
+	collitionBox    vec2.Rect
 }
 
-func (Powerup *Powerup) Update(image *ebiten.Image, delta int64) {
-	Powerup.position.Add(&Powerup.velocity)
+func (powerup *Powerup) UpdatePosition(playerVelocity vec2.T) {
+	v := copyVector(powerup.velocity)
+	//v.Scale(2)
+	v.Add(&playerVelocity)
+	powerup.position.Add(&v)
 }
 
-func (Powerup *Powerup) Draw(screen *ebiten.Image) {
-	Powerup.op.GeoM.Reset()
-	Powerup.op.GeoM.Translate(Powerup.position[0], Powerup.position[1])
-	Powerup.op.GeoM.Scale(powerupScale, powerupScale)
+func (powerup *Powerup) Draw(screen *ebiten.Image) {
+	powerup.op.GeoM.Reset()
+	powerup.op.GeoM.Translate(powerup.position[0], powerup.position[1])
+	powerup.op.GeoM.Scale(powerupScale, powerupScale)
 
-	err := screen.DrawImage(Powerup.sprite, Powerup.op)
+	// [Drawing collition box]
+	if DrawCollitionBoxes {
+		max := copyVector(powerup.collitionBox.Max)
+		min := copyVector(powerup.collitionBox.Min)
+
+		max.Sub(&min)
+		size := []float64{max[0], max[1]}
+
+		ebitenutil.DrawRect(screen, powerup.collitionBox.Min[0], powerup.collitionBox.Min[1], size[0], size[1], color.RGBA{
+			R: 0x70,
+			G: 0x70,
+			B: 0xFF,
+			A: 0x90,
+		})
+	}
+
+	err := screen.DrawImage(powerup.sprite, powerup.op)
 	if err != nil {
 		log.Error(err)
 	}
 }
 
-const PowerupsUpdateInterval = 20
-const puVelocityScale = 2
-const newPowerupProbability = .1
-const puMaxPlayerInfluence = .5
+const PowerupsUpdateInterval = (1 / 60) * 1000
+const puVelocityScale = .5
+const newPowerupProbability = .5
+const puMaxPlayerInfluence = .05
+const powerupSize = 32
 
 var PowerupsSprites map[PowerupType]*ebiten.Image
 
@@ -64,11 +86,12 @@ func init() {
 }
 
 type PowerupsSpawner struct {
-	activePowerups   map[uint]*Powerup
-	drawablePowerups []*Powerup
-	lastId           uint
-	timerAccumulator int64
-	player           *J0hn
+	activePowerups     map[uint]*Powerup
+	drawablePowerups   []*Powerup
+	lastId             uint
+	timerAccumulator   int64
+	player             *J0hn
+	lastPlayerPosition vec2.T
 }
 
 func NewPowerupSpawner(player *J0hn) *PowerupsSpawner {
@@ -79,22 +102,23 @@ func NewPowerupSpawner(player *J0hn) *PowerupsSpawner {
 	return Powerups
 }
 
-func (spawner *PowerupsSpawner) Update(image *ebiten.Image, delta int64) {
+func (spawner *PowerupsSpawner) Update(_ *ebiten.Image, delta int64) {
 	spawner.timerAccumulator += delta
 
 	if spawner.timerAccumulator >= PowerupsUpdateInterval {
 		newDrawables := []*Powerup{}
 		for _, item := range spawner.activePowerups {
 			v := copyVector(*spawner.player.velocity)
-			item.position.Add(v.Scale(item.playerInfluence))
-			item.Update(image, spawner.timerAccumulator)
+			v.Scale(item.playerInfluence)
+			item.UpdatePosition(v)
+
 			if item.position[1] > windowHeight/powerupScale {
 				log.WithField("PowerupId", item.id).Debug("killing Powerup")
 				delete(spawner.activePowerups, item.id)
 			}
 
-			if item.position[0] > -32*powerupScale &&
-				item.position[1] > -32*powerupScale &&
+			if item.position[0] > -powerupSize*powerupScale &&
+				item.position[1] > -powerupSize*powerupScale &&
 				item.position[0] < windowWidth &&
 				item.position[1] < windowHeight {
 				newDrawables = append(newDrawables, item)
@@ -103,9 +127,10 @@ func (spawner *PowerupsSpawner) Update(image *ebiten.Image, delta int64) {
 			min := copyVector(item.position)
 			min.Mul(&vec2.T{powerupScale, powerupScale})
 			max := copyVector(min)
-			max.Add(&vec2.T{planetSize, planetSize})
+			max.Add(&vec2.T{planetSize * powerupScale, planetSize * powerupScale})
 
 			vPos := &vec2.Rect{min, max}
+			item.collitionBox = *vPos
 			if spawner.player.Collition(vPos) {
 				switch item.puType {
 				case FuelType:
@@ -122,22 +147,23 @@ func (spawner *PowerupsSpawner) Update(image *ebiten.Image, delta int64) {
 		})
 		spawner.drawablePowerups = newDrawables
 
-		if rand.Float64() < (float64(spawner.timerAccumulator)/1000)*newPowerupProbability {
+		if spawner.lastPlayerPosition != *spawner.player.position && spawner.player.flying && !spawner.player.isLifting && rand.Float64() < (float64(spawner.timerAccumulator)/500)*newPowerupProbability {
+			spawner.lastPlayerPosition = *spawner.player.position
 			fx := (rand.Float64() * 2) - .5
-			px := fx * ((windowWidth - 32) / powerupScale)
+			px := fx * ((windowWidth - powerupSize) / powerupScale)
 			fy := rand.Float64()
 			if fx > 0 && fx < 1 {
 				fy *= .5
 			}
 			fy -= .5
 
-			py := fy * ((windowHeight - 32) / powerupScale)
+			py := fy * ((windowHeight - powerupSize) / powerupScale)
 
 			initPos := vec2.T{px, py}
 			initVel := copyVector(*spawner.player.position)
 			initVel.Sub(&initPos)
 			initVel.Normalize()
-			initVel.Scale((rand.Float64() * (puVelocityScale - 0.5)) + 0.5)
+			initVel.Scale(rand.Float64() * puVelocityScale)
 
 			puType := FuelType
 
@@ -151,7 +177,7 @@ func (spawner *PowerupsSpawner) Update(image *ebiten.Image, delta int64) {
 				op:              &ebiten.DrawImageOptions{},
 				position:        initPos,
 				velocity:        initVel,
-				playerInfluence: rand.Float64() * puMaxPlayerInfluence,
+				playerInfluence: (rand.Float64() * (puMaxPlayerInfluence / 2)) + (puMaxPlayerInfluence / 2),
 				puType:          puType,
 			}
 

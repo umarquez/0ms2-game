@@ -7,18 +7,22 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/ungerik/go3d/float64/vec2"
 	"image"
+	"image/color"
 	"math"
 	"path/filepath"
 )
 
-type PlayerDirection float64
+//type PlayerDirection float64
 
-const playerTick = 50
-const (
+const playerTick = (1 / 60.0) * 1000
+const frictionFactor = 0.99
+const frameTime = 100
+
+/*const (
 	DirectionLeft PlayerDirection = iota - 1
 	DirectionTop
 	DirectionRight
-)
+)*/
 
 var imgJ0hn *ebiten.Image
 var leftOffsetRotation = vec2.T{-13, 33}
@@ -43,7 +47,10 @@ type J0hn struct {
 	totalFrames    int
 	isAccelerating bool
 	timeAcumulator int64
-	currentTileId  vec2.T
+	currentTile    Tile
+	collitionBox   vec2.Rect
+	frameStep      int64
+	isLifting      bool
 
 	o2, fuel float64
 
@@ -83,12 +90,21 @@ func (j0hn *J0hn) SetPosition(newPosition vec2.T) *J0hn {
 
 func (j0hn *J0hn) Accelerate(amount *vec2.T) *J0hn {
 	j0hn.flying = true
-	j0hn.acceleration = j0hn.acceleration.Add(amount)
+	j0hn.acceleration.Add(amount)
 	j0hn.isAccelerating = true
-	j0hn.animationFrame++
-	if j0hn.animationFrame == 8 || j0hn.animationFrame == 14 || j0hn.animationFrame == 20 {
-		j0hn.animationFrame = j0hn.animationFrame - 6
+
+	if j0hn.velocity[0] > 50 {
+		j0hn.velocity[0] = 50
 	}
+
+	if j0hn.velocity[1] > 50 {
+		j0hn.velocity[1] = 50
+	} else if j0hn.velocity[1] < -50 {
+		j0hn.velocity[1] = -50
+	}
+
+	j0hn.velocity.Add(j0hn.acceleration)
+
 	return j0hn
 }
 
@@ -97,17 +113,12 @@ func (j0hn *J0hn) Steady() *J0hn {
 	j0hn.isAccelerating = false
 	j0hn.animationFrame = 1
 
-	if j0hn.velocity.IsZero() {
-		return j0hn
-	}
+	/*
+		if j0hn.velocity.Length() < .5 {
+			if j0hn.velocity[0] > j0hn.velocity[1] {
 
-	j0hn.velocity = j0hn.velocity.Scale(0.99)
-
-	if j0hn.velocity.Length() < .5 {
-		if j0hn.velocity[0] > j0hn.velocity[1] {
-
-		}
-	}
+			}
+		}*/
 
 	//fmt.Printf("%#v\n", j0hn.velocity)
 
@@ -133,7 +144,18 @@ func (j0hn *J0hn) Draw(screen *ebiten.Image) {
 	x1, y1 := j0hn.animationFrame*playerSize, 0
 	x2, y2 := x1+playerSize, y1+playerSize
 
-	screen.DrawImage(imgJ0hn.SubImage(image.Rect(x1, y1, x2, y2)).(*ebiten.Image), &op)
+	// [ Drawing collition box behind J0hn, if enabled
+	if DrawCollitionBoxes {
+		max := copyVector(j0hn.collitionBox.Max)
+		min := copyVector(j0hn.collitionBox.Min)
+
+		max.Sub(&min)
+		size := []float64{max[0], max[1]}
+
+		ebitenutil.DrawRect(screen, j0hn.collitionBox.Min[0], j0hn.collitionBox.Min[1], size[0], size[1], color.RGBA{0xFF, 0x70, 0x70, 0x90})
+	}
+
+	_ = screen.DrawImage(imgJ0hn.SubImage(image.Rect(x1, y1, x2, y2)).(*ebiten.Image), &op)
 	ebitenutil.DebugPrintAt(
 		screen,
 		fmt.Sprintf(
@@ -150,51 +172,66 @@ func (j0hn *J0hn) Draw(screen *ebiten.Image) {
 
 func (j0hn *J0hn) Update(_ *ebiten.Image, delta int64) {
 	j0hn.timeAcumulator += delta
+	j0hn.frameStep += delta
 
-	if j0hn.timeAcumulator >= playerTick {
+	if j0hn.isAccelerating && j0hn.fuel > 0 && j0hn.frameStep >= frameTime {
+		j0hn.frameStep = 0
+		j0hn.animationFrame++
+		if j0hn.animationFrame == 8 {
+			j0hn.animationFrame -= 6
+		}
+	}
+
+	if float64(j0hn.timeAcumulator) >= playerTick {
 		j0hn.timeAcumulator = 0
 
-		j0hn.o2 -= .1
-
-		if j0hn.o2 < 0 {
-			j0hn.o2 = 0
-			j0hn.velocity = &vec2.T{0, 0}
-		}
-
-		var direction = 0.0
-		if ebiten.IsKeyPressed(ebiten.KeyLeft) {
-			direction = 1
-			j0hn.rotation = -(45 * math.Pi) / 180
-			j0hn.position = j0hn.leftPosition
-		} else if ebiten.IsKeyPressed(ebiten.KeyRight) {
-			direction = -1
-			j0hn.rotation = (45 * math.Pi) / 180
-			j0hn.position = j0hn.rightPosition
+		if j0hn.isLifting {
+			j0hn.velocity = &vec2.T{0, 100}
 		} else {
-			j0hn.position = j0hn.upPosition
-			j0hn.rotation = 0
-		}
-
-		if ebiten.IsKeyPressed(ebiten.KeySpace) && j0hn.fuel > 0 {
-			j0hn.Accelerate(&vec2.T{direction * 2, 2})
-
-			if j0hn.fuel < 0 {
-				j0hn.fuel = 0
-			} else if j0hn.fuel > 0 {
-				j0hn.fuel -= 2
+			if j0hn.flying {
+				j0hn.o2 -= float64(delta) / 1000
 			}
 
-		} else if !j0hn.flying {
-			j0hn.StandUp()
-		} else {
-			j0hn.Steady()
-		}
+			if j0hn.o2 < 0 {
+				j0hn.o2 = 0
+				j0hn.velocity = &vec2.Zero
+			}
 
-		if !j0hn.acceleration.IsZero() {
-			j0hn.velocity = j0hn.velocity.Add(j0hn.acceleration)
-		}
+			var direction = 0.0
+			if ebiten.IsKeyPressed(ebiten.KeyLeft) {
+				direction = 1
+				j0hn.rotation = -(45 * math.Pi) / 180
+				j0hn.position = j0hn.leftPosition
+			} else if ebiten.IsKeyPressed(ebiten.KeyRight) {
+				direction = -1
+				j0hn.rotation = (45 * math.Pi) / 180
+				j0hn.position = j0hn.rightPosition
+			} else {
+				j0hn.position = j0hn.upPosition
+				j0hn.rotation = 0
+			}
 
-		var limit float64 = 20
+			if ebiten.IsKeyPressed(ebiten.KeySpace) && j0hn.fuel > 0 {
+				if !j0hn.flying {
+					j0hn.isLifting = true
+				}
+				amount := vec2.T{direction, 1}
+				amount.Scale(1 / float64(delta))
+				j0hn.Accelerate(&amount)
+
+				if j0hn.fuel < 0 {
+					j0hn.fuel = 0
+				} else if j0hn.fuel > 0 {
+					j0hn.fuel -= float64(delta) / 100
+				}
+			} else if !j0hn.flying {
+				j0hn.StandUp()
+			} else {
+				j0hn.Steady()
+				j0hn.velocity.Scale(frictionFactor)
+			}
+		}
+		/*const limit float64 = 50
 		if j0hn.velocity[0] > limit {
 			j0hn.velocity[0] = limit
 		} else if j0hn.velocity[0] < -limit {
@@ -205,11 +242,19 @@ func (j0hn *J0hn) Update(_ *ebiten.Image, delta int64) {
 			j0hn.velocity[1] = limit
 		} else if j0hn.velocity[1] < -limit {
 			j0hn.velocity[1] = -limit
+		}*/
+
+		if math.IsNaN(j0hn.velocity[0]) {
+			j0hn.velocity[0] = 0
 		}
 
-		if !j0hn.velocity.IsZero() {
-			j0hn.relativePosition = j0hn.relativePosition.Add(j0hn.velocity)
+		if math.IsNaN(j0hn.velocity[1]) {
+			j0hn.velocity[1] = 0
 		}
+
+		v := copyVector(*j0hn.velocity)
+		v.Scale(float64(delta) / 1000)
+		j0hn.relativePosition = j0hn.relativePosition.Add(&v)
 	}
 }
 
@@ -232,16 +277,20 @@ func (j0hn *J0hn) AddFuel(amount float64) {
 }
 
 func (j0hn *J0hn) Collition(obj *vec2.Rect) bool {
-	position := copyVector(*j0hn.position)
+	position := copyVector(*j0hn.upPosition)
 	position.Scale(j0hnScale)
 	max := copyVector(position)
-	max.Add(&vec2.T{playerSize, playerSize})
-	//max.Scale(2)
+	max.Add(&vec2.T{playerSize * j0hnScale, playerSize * j0hnScale})
+
+	position.Add(&vec2.T{(playerSize * j0hnScale) / 4, 0})
+	max.Sub(&vec2.T{(playerSize * j0hnScale) / 4, 0})
 
 	playerArea := vec2.Rect{
 		Min: position,
 		Max: max,
 	}
+
+	j0hn.collitionBox = playerArea
 
 	log.WithFields(map[string]interface{}{
 		"player": playerArea,

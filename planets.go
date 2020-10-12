@@ -11,7 +11,7 @@ import (
 	"sort"
 )
 
-const planetScale = 2
+const planetScale = 4
 
 type Planet struct {
 	id              uint
@@ -22,8 +22,11 @@ type Planet struct {
 	playerInfluence float64
 }
 
-func (planet *Planet) Update(image *ebiten.Image, delta int64) {
-	planet.position.Add(&planet.velocity)
+func (planet *Planet) UpdatePosition(playerVelocity vec2.T) {
+	v := copyVector(planet.velocity)
+	//v.Scale(2)
+	v.Add(&playerVelocity)
+	planet.position.Add(&v)
 }
 
 func (planet *Planet) Draw(screen *ebiten.Image) {
@@ -38,10 +41,10 @@ func (planet *Planet) Draw(screen *ebiten.Image) {
 }
 
 const planetSize = 32
-const planetsUpdateInterval = 20
-const velocityScale = 2
-const newPlanetProbability = .4
-const maxPlayerInfluence = .1
+const planetsUpdateInterval = (1 / 60) * 1000
+const newPlanetProbability = .5
+const planetVelocityScale = .05
+const maxPlayerInfluence = .01
 
 var planetsSprites []*ebiten.Image
 
@@ -59,11 +62,12 @@ func init() {
 }
 
 type PlanetsSpawner struct {
-	activePlanets    map[uint]*Planet
-	drawablePlanets  []*Planet
-	lastId           uint
-	timerAccumulator int64
-	player           *J0hn
+	activePlanets      map[uint]*Planet
+	drawablePlanets    []*Planet
+	lastId             uint
+	timerAccumulator   int64
+	player             *J0hn
+	lastPlayerPosition vec2.T
 }
 
 func NewPlanetSpawner(player *J0hn) *PlanetsSpawner {
@@ -74,22 +78,23 @@ func NewPlanetSpawner(player *J0hn) *PlanetsSpawner {
 	return planets
 }
 
-func (spawner *PlanetsSpawner) Update(image *ebiten.Image, delta int64) {
+func (spawner *PlanetsSpawner) Update(_ *ebiten.Image, delta int64) {
 	spawner.timerAccumulator += delta
 
 	if spawner.timerAccumulator >= planetsUpdateInterval {
 		newDrawables := []*Planet{}
 		for _, item := range spawner.activePlanets {
 			v := copyVector(*spawner.player.velocity)
-			item.position.Add(v.Scale(item.playerInfluence))
-			item.Update(image, spawner.timerAccumulator)
-			if item.position[1] > windowHeight/planetScale {
-				log.WithField("planetId", item.id).Debug("killing planet")
+			v.Scale(item.playerInfluence)
+			item.UpdatePosition(v)
+
+			if item.position[1] > windowHeight {
+				log.WithField("planetId", item.id).Trace("killing planet")
 				delete(spawner.activePlanets, item.id)
 			}
 
-			if item.position[0] > -32*planetScale &&
-				item.position[1] > -32*planetScale &&
+			if item.position[0] > -planetSize*planetScale &&
+				item.position[1] > -planetSize*planetScale &&
 				item.position[0] < windowWidth &&
 				item.position[1] < windowHeight {
 				newDrawables = append(newDrawables, item)
@@ -101,22 +106,23 @@ func (spawner *PlanetsSpawner) Update(image *ebiten.Image, delta int64) {
 		})
 		spawner.drawablePlanets = newDrawables
 
-		if rand.Float64() < (float64(spawner.timerAccumulator)/1000)*newPlanetProbability {
+		if spawner.lastPlayerPosition != *spawner.player.position && spawner.player.flying && !spawner.player.isLifting && rand.Float64() < (float64(spawner.timerAccumulator)/100)*newPlanetProbability {
+			spawner.lastPlayerPosition = *spawner.player.position
 			fx := (rand.Float64() * 2) - .5
-			px := fx * ((windowWidth - 32) / planetScale)
+			px := fx * ((windowWidth - planetSize) / planetScale)
 			fy := rand.Float64()
 			if fx > 0 && fx < 1 {
 				fy *= .5
 			}
 			fy -= .5
 
-			py := fy * ((windowHeight - 32) / planetScale)
+			py := fy * ((windowHeight - planetSize) / planetScale)
 
 			initPos := vec2.T{px, py}
 			initVel := copyVector(*spawner.player.position)
 			initVel.Sub(&initPos)
 			initVel.Normalize()
-			initVel.Scale((rand.Float64() * (velocityScale - 0.5)) + 0.5)
+			initVel.Scale(rand.Float64() * planetVelocityScale)
 
 			p := Planet{
 				id:              spawner.lastId + 1,
@@ -124,13 +130,13 @@ func (spawner *PlanetsSpawner) Update(image *ebiten.Image, delta int64) {
 				op:              &ebiten.DrawImageOptions{},
 				position:        initPos,
 				velocity:        initVel,
-				playerInfluence: rand.Float64() * maxPlayerInfluence,
+				playerInfluence: (rand.Float64() * (maxPlayerInfluence / 2)) + (maxPlayerInfluence / 2),
 			}
 
 			log.WithFields(map[string]interface{}{
 				"position": initPos,
 				"velocity": initVel,
-			}).Debug("spawning new planet.")
+			}).Trace("spawning new planet.")
 
 			spawner.activePlanets[spawner.lastId+1] = &p
 			spawner.lastId++
