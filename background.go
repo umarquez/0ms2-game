@@ -10,9 +10,9 @@ var (
 	positionCurrent vec2.T
 	positionN       = vec2.T{0, -windowHeight}
 	positionNE      = vec2.T{windowWidth, -windowHeight}
-	//positionE       = vec2.T{windowWidth, 0}
-	//positionW       = vec2.T{-windowWidth, 0}
-	positionNW = vec2.T{-windowWidth, -windowHeight}
+	positionE       = vec2.T{windowWidth, 0}
+	positionW       = vec2.T{-windowWidth, 0}
+	positionNW      = vec2.T{-windowWidth, -windowHeight}
 )
 
 type Background struct {
@@ -45,10 +45,12 @@ func (bg *Background) Update(_ *ebiten.Image, delta int64) {
 			positionN:       nil,
 			positionNE:      nil,
 			positionNW:      nil,
+			positionE:       nil,
+			positionW:       nil,
 		}
 		for tile := range bg.tiles {
 			vel := copyVector(*bg.player.velocity)
-			vel.Scale(float64(delta) / 300)
+			vel.Scale(float64(playerTick) / 300)
 
 			tile.Update(vel)
 

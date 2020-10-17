@@ -120,7 +120,6 @@ func NewInitTile(w, h, scale float64) Tile {
 
 	for y := h - 1; y >= 0; y-- {
 		p := (h - y) / h
-
 		fillColor := grad.GetColor(p)
 
 		for x := w - 1; x >= 0; x-- {

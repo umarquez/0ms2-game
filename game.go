@@ -33,20 +33,25 @@ func newGame(bg color.Color, windowSize image.Point) *Game {
 
 	playerPosition := vec2.T{
 		(windowWidth - (playerSize * j0hnScale)) / 2,
-		(windowHeight - (playerSize * j0hnScale)) - 20,
+		(windowHeight - (playerSize * j0hnScale)) - 77,
 	}
-
-	playerPosition.Scale(1 / j0hnScale)
 
 	player := NewJ0hn().SetPosition(playerPosition)
 	starfield := NewBackgroundSystem(player)
 	planets := NewPlanetSpawner(player)
 	powerups := NewPowerupSpawner(player)
+	ui := NewUi(player)
+
+	platform := NewPlatform(player)
+	platform.SetPosition(&vec2.T{(windowWidth - (platformSize * j0hnScale)) / 2, windowHeight - platformSize*3})
+
 	game.entities = append(game.entities,
 		starfield,
 		planets,
 		powerups,
+		platform,
 		player,
+		ui,
 	)
 
 	return game

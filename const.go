@@ -13,5 +13,7 @@ const (
 	j0hnScale       = 3.0
 	starsProportion = 0.0005
 
+	platformSpriteFile = "Platform.png"
+	platformSize       = 64
 	DrawCollitionBoxes = true
 )

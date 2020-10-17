@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"github.com/hajimehoshi/ebiten"
 	"github.com/hajimehoshi/ebiten/ebitenutil"
 	log "github.com/sirupsen/logrus"
@@ -25,8 +24,8 @@ const frameTime = 100
 )*/
 
 var imgJ0hn *ebiten.Image
-var leftOffsetRotation = vec2.T{-13, 33}
-var rightOffsetRotation = vec2.T{34, -12}
+var leftOffsetRotation = vec2.T{-10, 32}
+var rightOffsetRotation = vec2.T{28, -13}
 
 func init() {
 	imgJ0hn = loadSprite(filepath.Join(spritesPath, j0hnSpriteFile))
@@ -40,17 +39,14 @@ type J0hn struct {
 	velocity         *vec2.T
 	relativePosition *vec2.T
 	upPosition       *vec2.T
-	leftPosition     *vec2.T
-	rightPosition    *vec2.T
-	//friction     float64
-	animationFrame int
-	totalFrames    int
-	isAccelerating bool
-	timeAcumulator int64
-	currentTile    Tile
-	collitionBox   vec2.Rect
-	frameStep      int64
-	isLifting      bool
+	animationFrame   int
+	totalFrames      int
+	isAccelerating   bool
+	timeAcumulator   int64
+	currentTile      Tile
+	collitionBox     vec2.Rect
+	frameStep        int64
+	isLifting        bool
 
 	o2, fuel float64
 
@@ -73,17 +69,11 @@ func NewJ0hn() *J0hn {
 
 func (j0hn *J0hn) SetPosition(newPosition vec2.T) *J0hn {
 	scrPosition := copyVector(newPosition)
+	scrPosition.Scale(1 / j0hnScale)
+	scrPosition[0], scrPosition[1] = math.Round(scrPosition[0]), math.Round(scrPosition[1])
 	j0hn.upPosition = &scrPosition
 
-	l := copyVector(scrPosition)
-	l.Add(&leftOffsetRotation)
-	j0hn.leftPosition = &l
-
-	r := copyVector(scrPosition)
-	r.Add(&rightOffsetRotation)
-	j0hn.rightPosition = &r
-
-	t := copyVector(newPosition)
+	t := copyVector(scrPosition)
 	j0hn.position = &t
 	return j0hn
 }
@@ -93,14 +83,12 @@ func (j0hn *J0hn) Accelerate(amount *vec2.T) *J0hn {
 	j0hn.acceleration.Add(amount)
 	j0hn.isAccelerating = true
 
-	if j0hn.velocity[0] > 50 {
-		j0hn.velocity[0] = 50
+	if j0hn.velocity[0] > 50 || j0hn.velocity[0] < -50 {
+		j0hn.acceleration[0] = 0
 	}
 
-	if j0hn.velocity[1] > 50 {
-		j0hn.velocity[1] = 50
-	} else if j0hn.velocity[1] < -50 {
-		j0hn.velocity[1] = -50
+	if j0hn.velocity[1] > 50 || j0hn.velocity[1] < -50 {
+		j0hn.acceleration[1] = 0
 	}
 
 	j0hn.velocity.Add(j0hn.acceleration)
@@ -156,7 +144,7 @@ func (j0hn *J0hn) Draw(screen *ebiten.Image) {
 	}
 
 	_ = screen.DrawImage(imgJ0hn.SubImage(image.Rect(x1, y1, x2, y2)).(*ebiten.Image), &op)
-	ebitenutil.DebugPrintAt(
+	/*ebitenutil.DebugPrintAt(
 		screen,
 		fmt.Sprintf(
 			"Fuel: %0.2f\nO2: %0.2f\nVelocity:\n  x: %0.2f\n  y: %0.2f",
@@ -167,7 +155,7 @@ func (j0hn *J0hn) Draw(screen *ebiten.Image) {
 		),
 		0,
 		windowHeight/2,
-	)
+	)*/
 }
 
 func (j0hn *J0hn) Update(_ *ebiten.Image, delta int64) {
@@ -186,74 +174,69 @@ func (j0hn *J0hn) Update(_ *ebiten.Image, delta int64) {
 		j0hn.timeAcumulator = 0
 
 		if j0hn.isLifting {
-			j0hn.velocity = &vec2.T{0, 100}
+			j0hn.velocity = &vec2.T{0, 200}
 		} else {
-			if j0hn.flying {
-				j0hn.o2 -= float64(delta) / 1000
-			}
-
-			if j0hn.o2 < 0 {
-				j0hn.o2 = 0
-				j0hn.velocity = &vec2.Zero
-			}
-
 			var direction = 0.0
-			if ebiten.IsKeyPressed(ebiten.KeyLeft) {
-				direction = 1
-				j0hn.rotation = -(45 * math.Pi) / 180
-				j0hn.position = j0hn.leftPosition
-			} else if ebiten.IsKeyPressed(ebiten.KeyRight) {
-				direction = -1
-				j0hn.rotation = (45 * math.Pi) / 180
-				j0hn.position = j0hn.rightPosition
-			} else {
-				j0hn.position = j0hn.upPosition
-				j0hn.rotation = 0
+
+			if j0hn.flying {
+				j0hn.o2 -= float64(playerTick) / 500
+				if j0hn.o2 < 0 {
+					j0hn.o2 = 0
+					j0hn.velocity = &vec2.Zero
+				}
+
+				if ebiten.IsKeyPressed(ebiten.KeyRight) {
+					direction = -1
+					np := copyVector(*j0hn.upPosition)
+					np.Add(&rightOffsetRotation)
+					*j0hn.position = np
+				} else if ebiten.IsKeyPressed(ebiten.KeyLeft) {
+					direction = 1
+					np := copyVector(*j0hn.upPosition)
+					np.Add(&leftOffsetRotation)
+					*j0hn.position = np
+				} else {
+					*j0hn.position = *j0hn.upPosition
+				}
+				j0hn.rotation = -direction * ((45 * math.Pi) / 180)
+
+				log.WithField("position", *j0hn.position).Trace("")
 			}
 
-			if ebiten.IsKeyPressed(ebiten.KeySpace) && j0hn.fuel > 0 {
+			if ebiten.IsKeyPressed(ebiten.KeySpace) && j0hn.fuel > 0 && j0hn.o2 > 0 {
+				amount := vec2.T{}
 				if !j0hn.flying {
 					j0hn.isLifting = true
+				} else {
+					amount = vec2.T{direction, 1}
 				}
-				amount := vec2.T{direction, 1}
-				amount.Scale(1 / float64(delta))
+				amount.Scale(1 / float64(playerTick))
 				j0hn.Accelerate(&amount)
 
 				if j0hn.fuel < 0 {
 					j0hn.fuel = 0
-				} else if j0hn.fuel > 0 {
-					j0hn.fuel -= float64(delta) / 100
+				} else if j0hn.fuel > 0 && !j0hn.isLifting {
+					j0hn.fuel -= float64(playerTick) / 100
 				}
 			} else if !j0hn.flying {
 				j0hn.StandUp()
 			} else {
 				j0hn.Steady()
-				j0hn.velocity.Scale(frictionFactor)
 			}
-		}
-		/*const limit float64 = 50
-		if j0hn.velocity[0] > limit {
-			j0hn.velocity[0] = limit
-		} else if j0hn.velocity[0] < -limit {
-			j0hn.velocity[0] = -limit
+
+			j0hn.velocity.Scale(frictionFactor)
 		}
 
-		if j0hn.velocity[1] > limit {
-			j0hn.velocity[1] = limit
-		} else if j0hn.velocity[1] < -limit {
-			j0hn.velocity[1] = -limit
-		}*/
-
-		if math.IsNaN(j0hn.velocity[0]) {
+		if math.IsNaN(j0hn.velocity[0]) || (j0hn.velocity[0] < 1 && j0hn.velocity[0] > -1) {
 			j0hn.velocity[0] = 0
 		}
 
-		if math.IsNaN(j0hn.velocity[1]) {
+		if math.IsNaN(j0hn.velocity[1]) || (j0hn.velocity[1] < 1 && j0hn.velocity[1] > -1) {
 			j0hn.velocity[1] = 0
 		}
 
 		v := copyVector(*j0hn.velocity)
-		v.Scale(float64(delta) / 1000)
+		v.Scale(float64(playerTick) / 1000)
 		j0hn.relativePosition = j0hn.relativePosition.Add(&v)
 	}
 }
