@@ -65,7 +65,7 @@ func (powerup *Powerup) Draw(screen *ebiten.Image) {
 
 const PowerupsUpdateInterval = (1 / 60) * 1000
 const puVelocityScale = .5
-const newPowerupProbability = .5
+const newPowerupProbability = .1
 const puMaxPlayerInfluence = .05
 const powerupSize = 32
 
@@ -112,7 +112,7 @@ func (spawner *PowerupsSpawner) Update(_ *ebiten.Image, delta int64) {
 			v.Scale(item.playerInfluence)
 			item.UpdatePosition(v)
 
-			if item.position[1] > windowHeight/powerupScale {
+			if item.position[1] > windowHeight/powerupScale || (item.position[0] > windowWidth/powerupScale || item.position[0] < -windowWidth/powerupScale) {
 				log.WithField("PowerupId", item.id).Debug("killing Powerup")
 				delete(spawner.activePowerups, item.id)
 			}
@@ -147,8 +147,11 @@ func (spawner *PowerupsSpawner) Update(_ *ebiten.Image, delta int64) {
 		})
 		spawner.drawablePowerups = newDrawables
 
-		if spawner.lastPlayerPosition != *spawner.player.position && spawner.player.flying && !spawner.player.isLifting && rand.Float64() < (float64(spawner.timerAccumulator)/500)*newPowerupProbability {
-			spawner.lastPlayerPosition = *spawner.player.position
+		if spawner.lastPlayerPosition != *spawner.player.relativePosition &&
+			spawner.player.flying &&
+			!spawner.player.isLifting &&
+			rand.Float64() < (float64(spawner.timerAccumulator)/500)*newPowerupProbability {
+			spawner.lastPlayerPosition = *spawner.player.relativePosition
 			fx := (rand.Float64() * 2) - .5
 			px := fx * ((windowWidth - powerupSize) / powerupScale)
 			fy := rand.Float64()

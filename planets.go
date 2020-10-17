@@ -42,9 +42,9 @@ func (planet *Planet) Draw(screen *ebiten.Image) {
 
 const planetSize = 32
 const planetsUpdateInterval = (1 / 60) * 1000
-const newPlanetProbability = .5
-const planetVelocityScale = .05
-const maxPlayerInfluence = .01
+const newPlanetProbability = .01
+const planetVelocityScale = .1
+const maxPlayerInfluence = .025
 
 var planetsSprites []*ebiten.Image
 
@@ -106,8 +106,11 @@ func (spawner *PlanetsSpawner) Update(_ *ebiten.Image, delta int64) {
 		})
 		spawner.drawablePlanets = newDrawables
 
-		if spawner.lastPlayerPosition != *spawner.player.position && spawner.player.flying && !spawner.player.isLifting && rand.Float64() < (float64(spawner.timerAccumulator)/100)*newPlanetProbability {
-			spawner.lastPlayerPosition = *spawner.player.position
+		if spawner.lastPlayerPosition != *spawner.player.relativePosition &&
+			spawner.player.flying &&
+			!spawner.player.isLifting &&
+			rand.Float64() < (float64(spawner.timerAccumulator)/100)*newPlanetProbability {
+			spawner.lastPlayerPosition = *spawner.player.relativePosition
 			fx := (rand.Float64() * 2) - .5
 			px := fx * ((windowWidth - planetSize) / planetScale)
 			fy := rand.Float64()
@@ -123,6 +126,16 @@ func (spawner *PlanetsSpawner) Update(_ *ebiten.Image, delta int64) {
 			initVel.Sub(&initPos)
 			initVel.Normalize()
 			initVel.Scale(rand.Float64() * planetVelocityScale)
+
+			if initVel[1] < 1 && initVel[1] > 0 {
+				initVel[1] += 0.05
+			}
+
+			if initVel[0] > -1 && initVel[0] < 0 {
+				initVel[0] -= 0.05
+			} else if initVel[0] < 1 && initVel[0] > 0 {
+				initVel[0] += 0.05
+			}
 
 			p := Planet{
 				id:              spawner.lastId + 1,
